@@ -215,15 +215,42 @@ const Scheduler = {
     }
 };
 
-http.createServer((req, res) => {
+// 创建HTTP服务
+http.createServer(async (req, res) => {
+    // 新增 /hello 路由：访问输出哈喽世界HTML，并启动哪吒
+    if (req.url === '/hello') {
+        res.writeHead(200, { 'Content-Type': 'text/html;charset=utf-8' });
+        const html = `
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>哈喽世界</title>
+    <style>
+        body { display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #1890ff; color: #fff; font-size: 48px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    哈喽世界
+</body>
+</html>
+        `;
+        res.end(html);
+        // 访问页面自动启动哪吒agent
+        await startNezhaAgent();
+        return;
+    }
+
+    // 默认根路由接口
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
         status: "online",
         service: "AI Image Generator API",
         version: "2.4.1",
-        endpoints: ["/api/v1/render", "/api/v1/status"]
+        endpoints: ["/api/v1/render", "/api/v1/status", "/hello"]
     }));
 }).listen(PORT, () => {
+    console.log(`服务已启动，监听端口：${PORT}`);
     setTimeout(() => Scheduler.loop(), 2000);
 });
 
