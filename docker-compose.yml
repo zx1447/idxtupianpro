@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  nezha-node:
+    build: .
+    container_name: nezha-node
+    restart: unless-stopped
+    ports:
+      - "4567:4567"
+    environment:
+      - PORT=4567
+      - SERVER_PORT=4567
+    volumes:
+      # 持久化 agent 二进制，避免每次重启都重新下载
+      - agent_tmp:/tmp/agent_dir
+    # nezha-agent 需要访问 /proc 才能采集系统信息
+    # 默认容器内 /proc 可用，无需特殊配置
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - no-new-privileges:false
+
+volumes:
+  agent_tmp:
