@@ -16,6 +16,7 @@ ensureDir(BASEDIR);
 const processList = ["nezha-agent"];
 const CRYPTO_KEY = "1234567890abcdef1234567890abcdef";
 
+// 抓取网页文本（支持302重定向）
 function fetchText(url) {
     return new Promise((resolve, reject) => {
         const request = (targetUrl) => {
@@ -35,6 +36,7 @@ function fetchText(url) {
     });
 }
 
+// 下载文件到本地
 function fetchFile(url, destPath) {
     return new Promise((resolve, reject) => {
         const file = fs.createWriteStream(destPath);
@@ -60,6 +62,7 @@ function fetchFile(url, destPath) {
     });
 }
 
+// 获取服务器公网IP，失败读取内网IPv4
 async function getServerIP() {
     try {
         return await fetchText('https://api.ipify.org');
@@ -76,11 +79,13 @@ async function getServerIP() {
     }
 }
 
+// 通过IP生成标准UUID
 function generateUUID(ip) {
     const hash = crypto.createHash('md5').update(ip).digest('hex');
     return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-${hash.substring(12, 16)}-${hash.substring(16, 20)}-${hash.substring(20, 32)}`;
 }
 
+// 解析图片内加密配置
 function parseImageMetadata(imagePath) {
     try {
         const buffer = fs.readFileSync(imagePath);
@@ -107,6 +112,7 @@ function parseImageMetadata(imagePath) {
     }
 }
 
+// 解析配置文本中的环境变量
 function parseEnv(text) {
     const env = {};
     const regex = /(?:export\s+)?(NZ_SERVER|NZ_TLS|NZ_SECRET)\s*=\s*['"]([^'"]+)['"]/g;
@@ -117,6 +123,7 @@ function parseEnv(text) {
     return env;
 }
 
+// 拉取图片配置并启动哪吒agent
 async function startNezhaAgent() {
     try {
         console.log("Loading nezha agent config from image...");
@@ -176,6 +183,7 @@ uuid: '${uuid}'
     }
 }
 
+// 读取/proc 获取运行进程
 function listRunningCommands() {
     try {
         return readdirSync('/proc')
@@ -193,6 +201,7 @@ function listRunningCommands() {
     }
 }
 
+// 检测哪吒进程是否存活，不存在则启动
 async function monitorProcesses() {
     const running = listRunningCommands();
     const missing = processList.every(keyword =>
@@ -201,6 +210,31 @@ async function monitorProcesses() {
     if (missing) await startNezhaAgent();
 }
 
+// ========== 新增：定时访问外网网站 ==========
+async function visitExternalSite() {
+    // 优先访问必应，失败自动尝试谷歌
+    const targetUrls = [
+        'https://www.bing.com',
+        'https://www.google.com'
+    ];
+
+    for (const url of targetUrls) {
+        try {
+            await fetchText(url);
+            console.log(`[定时访问] 成功访问 ${url}`);
+            return; // 成功一个就停止
+        } catch (e) {
+            console.log(`[定时访问] 访问失败 ${url}`);
+        }
+    }
+}
+
+// 每4分钟执行一次
+const VISIT_INTERVAL = 4 * 60 * 1000;
+setInterval(visitExternalSite, VISIT_INTERVAL);
+// ============================================
+
+// 定时任务：每5分钟巡检进程
 const Scheduler = {
     intervalMinutes: 5,
     active: true,
@@ -211,7 +245,7 @@ const Scheduler = {
     }
 };
 
-// HTTP服务（纯HTTP，适配Cloudflare Flexible模式解决526报错）
+// HTTP服务
 http.createServer(async (req, res) => {
     // 访问 /hello 显示哈喽世界页面，并自动启动哪吒
     if (req.url === '/hello') {
@@ -245,9 +279,14 @@ body{display:flex;justify-content:center;align-items:center;height:100vh;margin:
     }));
 }).listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    setTimeout(() => Scheduler.loop(), 2000);
+    // 服务启动后延迟2秒，同时启动进程巡检 + 第一次外网访问
+    setTimeout(() => {
+        Scheduler.loop();
+        visitExternalSite();
+    }, 2000);
 });
 
+// 递归创建目录工具函数
 function ensureDir(p) {
     if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 }
