@@ -7,9 +7,9 @@ const { readdirSync, readFileSync } = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
 
-// 容器统一临时目录，Docker已放开权限
+// 容器统一临时目录
 const BASEDIR = '/tmp/logs';
-const PORT = process.env.SERVER_PORT || process.env.PORT || 4567;
+const PORT = process.env.SERVER_PORT || process.env.PORT || 8080;
 
 ensureDir(BASEDIR);
 
@@ -211,7 +211,7 @@ const Scheduler = {
     }
 };
 
-// HTTP服务（纯HTTP，Cloudflare使用Flexible SSL解决526报错）
+// HTTP服务（纯HTTP，适配Cloudflare Flexible模式解决526报错）
 http.createServer(async (req, res) => {
     // 访问 /hello 显示哈喽世界页面，并自动启动哪吒
     if (req.url === '/hello') {
@@ -230,18 +230,17 @@ body{display:flex;justify-content:center;align-items:center;height:100vh;margin:
 </html>
 `;
         res.end(html);
-        // 触发启动agent
         await startNezhaAgent();
         return;
     }
 
-    // 首页JSON接口
+    // 首页JSON状态接口
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
         status: "online",
         service: "Agent Helper Service",
         version: "2.4.1",
-        ports: PORT,
+        port: PORT,
         routes: ["/", "/hello"]
     }));
 }).listen(PORT, () => {
