@@ -1,34 +1,9 @@
-FROM node:20-slim
-
-# 安装依赖工具
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    unzip \
-    ca-certificates \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-# 下载对应架构nezha-agent并赋予全局执行权限
-RUN arch=$(uname -m) && \
-    if [ "$arch" = "x86_64" ]; then arch="amd64"; fi && \
-    if [ "$arch" = "aarch64" ]; then arch="arm64"; fi && \
-    curl -L -o /tmp/agent.zip "https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_${arch}.zip" && \
-    unzip -o /tmp/agent.zip -d /usr/local/bin/ && \
-    chmod 755 /usr/local/bin/nezha-agent && \
-    rm -f /tmp/agent.zip
-
-# 复制Node脚本
-COPY index.js .
-
-# 创建运行用户，放开/tmp目录读写权限
-RUN groupadd -r appuser && useradd -r -g appuser appuser \
-    && chmod 777 /tmp
-
-ENV PORT=8080
-EXPOSE 8080
-
-# 使用普通用户运行
-USER appuser
-
-CMD ["node", "index.js"]
+{
+  "name": "idxtupianpro",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {}
+}
