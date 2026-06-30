@@ -1,7 +1,5 @@
 {
-  "name": "nezha-proxy",
-  "version": "1.0.0",
   "scripts": {
-    "build": "echo no build required"
+    "build": "mkdir -p dist && cp index.js Dockerfile dist/"
   }
 }
