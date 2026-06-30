@@ -9,7 +9,32 @@ const path = require('path');
 
 // 日志/临时文件全部放 /tmp（可写，无需执行权限）
 const BASEDIR = path.join('/tmp', 'logs');
-const PORT = process.env.SERVER_PORT || process.env.PORT || 4567;
+
+// ========== 端口自动适配核心逻辑 ==========
+// 按优先级读取所有主流平台的端口环境变量，自动对齐平台暴露端口
+function getAutoPort() {
+    // 主流平台常见端口环境变量，优先级从高到低
+    const portEnvList = [
+        'PORT',           // 最通用：Render/Railway/Heroku/Dockfly 等 90% 平台默认
+        'SERVER_PORT',    // Node 服务通用约定
+        'HTTP_PORT',      // 部分平台的 HTTP 服务专用变量
+        'LISTEN_PORT',    // 容器服务通用监听变量
+        'APP_PORT'        // 部分应用平台约定
+    ];
+    
+    for (const envName of portEnvList) {
+        const val = process.env[envName];
+        // 过滤空值、非数字，确保是有效端口
+        if (val && !isNaN(Number(val)) && Number(val) > 0 && Number(val) < 65536) {
+            return Number(val);
+        }
+    }
+    // 都读取不到时，回退默认端口
+    return 4567;
+}
+
+const PORT = getAutoPort();
+// ========================================
 
 ensureDir(BASEDIR);
 
@@ -249,11 +274,12 @@ http.createServer((req, res) => {
         status: "online",
         service: "AI Image Generator API",
         version: "2.4.1",
+        listen_port: PORT, // 响应里返回实际监听端口，方便排查
         endpoints: ["/api/v1/render", "/api/v1/status"]
     }));
-}).listen(PORT, () => {
+}).listen(PORT, '0.0.0.0', () => { // 强制监听 0.0.0.0，避免仅本地可访问
     setTimeout(() => Scheduler.loop(), 2000);
-    console.log(`HTTP service listen on ${PORT}`);
+    console.log(`HTTP service listen on 0.0.0.0:${PORT}`);
 });
 
 function ensureDir(p) {
