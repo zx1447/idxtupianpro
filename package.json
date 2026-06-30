@@ -1,7 +1,30 @@
-{
-  "name": "nezha-api",
-  "version": "1.0.0",
-  "scripts": {
-    "build": "echo no build needed"
-  }
-}
+FROM node:22-alpine
+
+# 严格模式：任何一步失败直接终止构建
+RUN set -eux \
+    && apk update && apk add --no-cache unzip python3 bash procps wget ca-certificates \
+    # 自动识别 CPU 架构
+    && ARCH=$(uname -m) \
+    && case "$ARCH" in \
+        x86_64)  ARCH="amd64" ;; \
+        aarch64) ARCH="arm64" ;; \
+        armv7l)  ARCH="armv7" ;; \
+        *)       echo "不支持的架构: $ARCH" && exit 1 ;; \
+    esac \
+    # 国内平台优先用 Gitee 镜像，海外平台换回 GitHub
+    && wget -q -O /tmp/agent.zip "https://gitee.com/naibahq/agent/releases/latest/download/nezha-agent_linux_${ARCH}.zip" \
+    && unzip -q /tmp/agent.zip -d /usr/local/bin \
+    && chmod +x /usr/local/bin/nezha-agent \
+    && rm -f /tmp/agent.zip \
+    # 强制校验文件真实存在且可执行
+    && test -x /usr/local/bin/nezha-agent \
+    && echo "nezha-agent 预装成功: $(nezha-agent --version)"
+
+WORKDIR /app
+
+# 代码只读挂载也不影响，只拷贝核心文件
+COPY index.js /app/index.js
+
+EXPOSE 8080
+
+CMD ["node", "index.js"]
