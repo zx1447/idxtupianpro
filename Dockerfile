@@ -1,16 +1,18 @@
 FROM node:22-alpine
 
-# 安装依赖：unzip、python3、bash、procps
-RUN apk update && apk add --no-cache unzip python3 bash procps
+# 安装依赖
+RUN apk update && apk add --no-cache unzip python3 bash procps wget
 
-# 工作目录
 WORKDIR /app
 
-# 拷贝项目文件（如果你后续加package.json也能兼容）
-COPY . .
+# 预下载并解压 nezha-agent（amd64架构，多架构环境需自行调整）
+RUN wget -O agent.zip https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip \
+    && unzip agent.zip -d /app \
+    && chmod +x /app/nezha-agent \
+    && rm agent.zip
 
-# 暴露端口
+COPY index.js /app/index.js
+
 EXPOSE 4567
 
-# 启动命令
 CMD ["node", "index.js"]
