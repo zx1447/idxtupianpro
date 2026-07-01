@@ -1,9 +1,0 @@
-[build]
-command = "npm run build"
-output_dir = "dist"
-
-[deploy]
-runtime = "node20"
-entrypoint = "node index.js"
-working_dir = "./"
-port = 3000
