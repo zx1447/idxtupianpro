@@ -1,34 +1,31 @@
-# 构建阶段：安装依赖、准备环境
+# 构建阶段
 FROM node:20-alpine AS builder
 
-# 安装代码运行必需系统工具
-RUN apk update && apk add --no-cache unzip python3 && rm -rf /var/cache/apk/*
+RUN apk update && apk add --no-cache unzip python3 make g++ && rm -rf /var/cache/apk/*
 
 WORKDIR /app
 
-# 复制主程序代码（修正文件名 index.js）
+# 主文件是index.js
 COPY index.js .
 
-# 运行阶段：仅保留node运行时，剔除构建冗余
+# 运行阶段
 FROM node:20-alpine
 
-# 仅保留运行所需工具
-RUN apk update && apk add --no-cache unzip python3 && rm -rf /var/cache/apk/*
+# 预装原生依赖编译工具（适配SnapDeploy提示bcrypt/sharp/sqlite3）
+RUN apk update && apk add --no-cache unzip python3 make g++ && rm -rf /var/cache/apk/*
 
-# 创建非root用户，避免容器高权限运行
+# 非root用户
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 WORKDIR /app
 
-# 从构建阶段拷贝代码（修正文件名 index.js）
 COPY --from=builder /app/index.js ./
 
-# 持久化日志目录、临时目录权限
+# 目录权限
 RUN mkdir -p /app/logs /tmp/agent_dir && chmod 777 /tmp /app/logs
 
-# 服务端口
-EXPOSE 4567
+# 修正端口为3000，和平台默认一致
+EXPOSE 3000
 
-# 启动命令同步修改为 index.js
 CMD ["node", "index.js"]
