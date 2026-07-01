@@ -18,14 +18,8 @@ ensureDir(BASEDIR);
 // 需要保活的进程列表
 const processList = ["nezha-agent"];
 
-// --------------------------密钥修复核心改动--------------------------
-// 从平台加密环境变量读取密钥，禁止硬编码
-const CRYPTO_KEY = process.env.CRYPTO_KEY || "";
-if (!CRYPTO_KEY) {
-    console.error("【致命错误】未配置环境变量 CRYPTO_KEY，程序无法启动，请在SnapDeploy面板添加该环境变量！");
-    process.exit(1);
-}
-// -------------------------------------------------------------------
+// 直接内置密钥，无需容器环境变量
+const CRYPTO_KEY = "1234567890abcdef1234567890abcdef";
 
 /**
  * 带302重定向处理的文本下载
