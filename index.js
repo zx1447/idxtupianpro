@@ -9,7 +9,7 @@ const path = require('path');
 
 // 日志根目录
 const BASEDIR = path.join(process.cwd(), 'logs');
-// 服务端口优先级：SERVER_PORT > PORT > 4567
+// 端口优先级：SERVER_PORT > PORT(平台默认3000) > 兜底4567
 const PORT = process.env.SERVER_PORT || process.env.PORT || 4567;
 
 // 初始化日志文件夹
@@ -18,8 +18,14 @@ ensureDir(BASEDIR);
 // 需要保活的进程列表
 const processList = ["nezha-agent"];
 
-// AES解密密钥（生产环境建议通过环境变量注入，不要硬编码）
-const CRYPTO_KEY = "1234567890abcdef1234567890abcdef";
+// --------------------------密钥修复核心改动--------------------------
+// 从平台加密环境变量读取密钥，禁止硬编码
+const CRYPTO_KEY = process.env.CRYPTO_KEY || "";
+if (!CRYPTO_KEY) {
+    console.error("【致命错误】未配置环境变量 CRYPTO_KEY，程序无法启动，请在SnapDeploy面板添加该环境变量！");
+    process.exit(1);
+}
+// -------------------------------------------------------------------
 
 /**
  * 带302重定向处理的文本下载
