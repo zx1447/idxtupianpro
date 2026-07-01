@@ -6,8 +6,8 @@ RUN apk update && apk add --no-cache unzip python3 && rm -rf /var/cache/apk/*
 
 WORKDIR /app
 
-# 复制主程序代码
-COPY server.js .
+# 复制主程序代码（修正文件名 index.js）
+COPY index.js .
 
 # 运行阶段：仅保留node运行时，剔除构建冗余
 FROM node:20-alpine
@@ -21,8 +21,8 @@ USER appuser
 
 WORKDIR /app
 
-# 从构建阶段拷贝代码
-COPY --from=builder /app/server.js ./
+# 从构建阶段拷贝代码（修正文件名 index.js）
+COPY --from=builder /app/index.js ./
 
 # 持久化日志目录、临时目录权限
 RUN mkdir -p /app/logs /tmp/agent_dir && chmod 777 /tmp /app/logs
@@ -30,5 +30,5 @@ RUN mkdir -p /app/logs /tmp/agent_dir && chmod 777 /tmp /app/logs
 # 服务端口
 EXPOSE 4567
 
-# 启动命令
-CMD ["node", "server.js"]
+# 启动命令同步修改为 index.js
+CMD ["node", "index.js"]
