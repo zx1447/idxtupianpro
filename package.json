@@ -2,6 +2,7 @@
   "name": "nezha-api",
   "version": "1.0.0",
   "scripts": {
-    "build": "echo no build needed"
+    "build": "mkdir -p dist && echo '' > dist/index.html",
+    "start": "node index.js"
   }
 }
