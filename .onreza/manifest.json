@@ -1,0 +1,6 @@
+{
+  "runtime": "node20",
+  "entry": "./index.js",
+  "cwd": "./",
+  "port": 3000
+}
