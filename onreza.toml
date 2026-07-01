@@ -1,0 +1,11 @@
+# 构建阶段：生成dist骗过平台静态校验
+[build]
+command = "npm run build"
+output_dir = "dist"
+
+# 运行部署阶段：强制根目录启动node，忽略dist
+[deploy]
+runtime = "node20"
+entrypoint = "npm run start"
+working_dir = "./"
+port = 3000
